@@ -1,34 +1,38 @@
 <!DOCTYPE html>
 <html>
 <head>
-<meta charset="UTF-8">
-<title>Matrix Transformation on Image Pixels</title>
+<meta charset="UTF-8" />
+<title>Matrix Transformation on Image Pixels (Math Coordinates)</title>
 <style>
-body { font-family: Arial; background:#f4f4f4; text-align:center; }
-canvas { border:1px solid black; margin:10px; }
-.controls { margin:10px auto; width:900px; background:white; padding:10px; border-radius:8px;}
-.sliderRow { display:flex; align-items:center; justify-content:space-between; margin:5px 0;}
-label { width:20px; }
-.value { width:50px; }
+  body { font-family: Arial; background:#f4f4f4; text-align:center; }
+  canvas { border:1px solid black; margin:10px; }
+  .controls { margin:10px auto; width:900px; background:white; padding:10px; border-radius:8px;}
+  .sliderRow { display:flex; align-items:center; justify-content:space-between; margin:5px 0;}
+  label { width:20px; }
+  .value { width:60px; text-align:right; display:inline-block; }
+  .note { width:900px; margin:0 auto; color:#333; font-size:14px; }
 </style>
 </head>
 <body>
 
 <h2>Matrix Transformation on Image Pixels</h2>
+<div class="note">
+  This version uses <b>math coordinates</b>: +y is upward. Click a point on the left image to track it.
+</div>
 
 <div class="controls">
-<input type="file" id="upload">
+  <input type="file" id="upload" />
 
-<div class="sliderRow"><label>a</label><input type="range" id="a" min="-2" max="2" step="0.01" value="1"><span id="aVal" class="value"></span></div>
-<div class="sliderRow"><label>b</label><input type="range" id="b" min="-2" max="2" step="0.01" value="0"><span id="bVal" class="value"></span></div>
-<div class="sliderRow"><label>c</label><input type="range" id="c" min="-2" max="2" step="0.01" value="0"><span id="cVal" class="value"></span></div>
-<div class="sliderRow"><label>d</label><input type="range" id="d" min="-2" max="2" step="0.01" value="1"><span id="dVal" class="value"></span></div>
+  <div class="sliderRow"><label>a</label><input type="range" id="a" min="-2" max="2" step="0.01" value="1"><span id="aVal" class="value"></span></div>
+  <div class="sliderRow"><label>b</label><input type="range" id="b" min="-2" max="2" step="0.01" value="0"><span id="bVal" class="value"></span></div>
+  <div class="sliderRow"><label>c</label><input type="range" id="c" min="-2" max="2" step="0.01" value="0"><span id="cVal" class="value"></span></div>
+  <div class="sliderRow"><label>d</label><input type="range" id="d" min="-2" max="2" step="0.01" value="1"><span id="dVal" class="value"></span></div>
 
-<button onclick="setRotation()">Rotation</button>
-<button onclick="setShear()">Shear</button>
-<button onclick="setScale()">Scale</button>
-<button onclick="setReflection()">Reflect</button>
-<button onclick="resetMatrix()">Reset</button>
+  <button onclick="setRotation()">Rotation 30°</button>
+  <button onclick="setShear()">Shear</button>
+  <button onclick="setScale()">Scale</button>
+  <button onclick="setReflection()">Reflect</button>
+  <button onclick="resetMatrix()">Reset</button>
 </div>
 
 <canvas id="original" width="400" height="400"></canvas>
@@ -40,105 +44,187 @@ const transCanvas = document.getElementById("transformed");
 const octx = origCanvas.getContext("2d");
 const tctx = transCanvas.getContext("2d");
 
+const CX = 200, CY = 200; // center of canvas
+
+// Demo image (you can replace with a local file in your repo)
 let img = new Image();
+img.crossOrigin = "anonymous";
 img.src = "https://upload.wikimedia.org/wikipedia/commons/3/3f/JPEG_example_flower.jpg";
-img.crossOrigin="anonymous";
 
-let trackPoint = {x:200, y:200};
+let trackPointCanvas = { x: 200, y: 200 }; // stored in canvas coords
 
-document.getElementById("upload").onchange = e=>{
-  let reader = new FileReader();
+document.getElementById("upload").onchange = e => {
+  const reader = new FileReader();
   reader.onload = ev => img.src = ev.target.result;
   reader.readAsDataURL(e.target.files[0]);
 };
 
-img.onload = ()=> draw();
+img.onload = () => draw();
 
-function getMatrix(){
-  return {
-    a:+a.value, b:+b.value,
-    c:+c.value, d:+d.value
-  };
+function getMatrix() {
+  return { a:+a.value, b:+b.value, c:+c.value, d:+d.value };
 }
 
-function drawGrid(ctx){
-  ctx.strokeStyle="lime";
-  for(let x=0;x<400;x+=40){
-    ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,400); ctx.stroke();
+// --- Coordinate conversion (math coords <-> canvas coords) ---
+// Math coords are centered at (0,0) in the middle, with +y upward.
+function canvasToMath(p) {
+  return { x: p.x - CX, y: CY - p.y };
+}
+function mathToCanvas(p) {
+  return { x: p.x + CX, y: CY - p.y };
+}
+
+function drawGrid(ctx) {
+  ctx.strokeStyle = "lime";
+  for (let x = 0; x <= 400; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, 400); ctx.stroke();
   }
-  for(let y=0;y<400;y+=40){
-    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(400,y); ctx.stroke();
+  for (let y = 0; y <= 400; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(400, y); ctx.stroke();
   }
 }
 
-function drawBasis(ctx,m){
-  ctx.strokeStyle="red"; ctx.lineWidth=3;
-  ctx.beginPath(); ctx.moveTo(200,200); ctx.lineTo(200+100*m.a,200+100*m.c); ctx.stroke();
-  ctx.strokeStyle="blue";
-  ctx.beginPath(); ctx.moveTo(200,200); ctx.lineTo(200+100*m.b,200+100*m.d); ctx.stroke();
+// Draw basis vectors in MATH coordinates:
+// red = A*(1,0) = (a,c)
+// blue = A*(0,1) = (b,d)
+function drawBasis(ctx, m) {
+  const scale = 100;
+
+  // Origin in math coords is (0,0)
+  const O = mathToCanvas({ x: 0, y: 0 });
+
+  // First column (a,c)
+  const e1 = mathToCanvas({ x: scale*m.a, y: scale*m.c });
+  ctx.strokeStyle = "red";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(O.x, O.y);
+  ctx.lineTo(e1.x, e1.y);
+  ctx.stroke();
+
+  // Second column (b,d)
+  const e2 = mathToCanvas({ x: scale*m.b, y: scale*m.d });
+  ctx.strokeStyle = "blue";
+  ctx.beginPath();
+  ctx.moveTo(O.x, O.y);
+  ctx.lineTo(e2.x, e2.y);
+  ctx.stroke();
+
+  ctx.lineWidth = 1;
 }
 
-function draw(){
-  let m = getMatrix();
+// Transform a point given in CANVAS coords, but interpret it in MATH coords
+function transformCanvasPoint(pCanvas, m) {
+  const p = canvasToMath(pCanvas); // math coords (x,y)
+  const x2 = m.a*p.x + m.b*p.y;
+  const y2 = m.c*p.x + m.d*p.y;
+  return mathToCanvas({ x: x2, y: y2 });
+}
 
-  aVal.textContent=m.a.toFixed(2);
-  bVal.textContent=m.b.toFixed(2);
-  cVal.textContent=m.c.toFixed(2);
-  dVal.textContent=m.d.toFixed(2);
+function invert(m) {
+  const det = m.a*m.d - m.b*m.c;
+  // If near zero, keep something tiny to avoid crash (visual will still get weird)
+  const safeDet = (Math.abs(det) < 1e-8) ? (det >= 0 ? 1e-8 : -1e-8) : det;
+  return { a: m.d/safeDet, b: -m.b/safeDet, c: -m.c/safeDet, d: m.a/safeDet };
+}
 
+function draw() {
+  const m = getMatrix();
+  aVal.textContent = m.a.toFixed(2);
+  bVal.textContent = m.b.toFixed(2);
+  cVal.textContent = m.c.toFixed(2);
+  dVal.textContent = m.d.toFixed(2);
+
+  // Draw original image + grid + tracked point
   octx.clearRect(0,0,400,400);
   octx.drawImage(img,0,0,400,400);
   drawGrid(octx);
-  octx.fillStyle="yellow";
-  octx.beginPath(); octx.arc(trackPoint.x,trackPoint.y,5,0,Math.PI*2); octx.fill();
 
-  let imageData=octx.getImageData(0,0,400,400);
-  let out=tctx.createImageData(400,400);
-  let inv = invert(m);
+  octx.fillStyle = "yellow";
+  octx.beginPath();
+  octx.arc(trackPointCanvas.x, trackPointCanvas.y, 5, 0, Math.PI*2);
+  octx.fill();
 
-  for(let x=0;x<400;x++){
-    for(let y=0;y<400;y++){
-      let dx=x-200, dy=y-200;
-      let sx=inv.a*dx+inv.b*dy+200;
-      let sy=inv.c*dx+inv.d*dy+200;
-      if(sx>=0&&sy>=0&&sx<400&&sy<400){
-        let si=(Math.floor(sy)*400+Math.floor(sx))*4;
-        let di=(y*400+x)*4;
-        out.data[di]=imageData.data[si];
-        out.data[di+1]=imageData.data[si+1];
-        out.data[di+2]=imageData.data[si+2];
-        out.data[di+3]=255;
+  const imageData = octx.getImageData(0,0,400,400);
+  const out = tctx.createImageData(400,400);
+
+  const inv = invert(m);
+
+  // Inverse mapping: for each OUTPUT pixel, compute SOURCE pixel
+  // Using MATH coords internally, then map back to canvas coords for sampling
+  for (let x = 0; x < 400; x++) {
+    for (let y = 0; y < 400; y++) {
+      // Output pixel center in math coords
+      const outMath = canvasToMath({ x, y });
+
+      // Apply inverse: srcMath = invA * outMath
+      const sxm = inv.a*outMath.x + inv.b*outMath.y;
+      const sym = inv.c*outMath.x + inv.d*outMath.y;
+
+      // Convert source math coords back to canvas coords
+      const srcCanvas = mathToCanvas({ x: sxm, y: sym });
+
+      const sx = Math.floor(srcCanvas.x);
+      const sy = Math.floor(srcCanvas.y);
+
+      if (sx >= 0 && sy >= 0 && sx < 400 && sy < 400) {
+        const si = (sy*400 + sx) * 4;
+        const di = (y*400 + x) * 4;
+        out.data[di]   = imageData.data[si];
+        out.data[di+1] = imageData.data[si+1];
+        out.data[di+2] = imageData.data[si+2];
+        out.data[di+3] = 255;
       }
     }
   }
 
-  tctx.putImageData(out,0,0);
+  // Draw transformed image + grid + basis + tracked point
+  tctx.putImageData(out, 0, 0);
   drawGrid(tctx);
-  drawBasis(tctx,m);
+  drawBasis(tctx, m);
 
-  let tp = transform(trackPoint,m);
-  tctx.fillStyle="yellow";
-  tctx.beginPath(); tctx.arc(tp.x,tp.y,5,0,Math.PI*2); tctx.fill();
+  const tp2 = transformCanvasPoint(trackPointCanvas, m);
+  tctx.fillStyle = "yellow";
+  tctx.beginPath();
+  tctx.arc(tp2.x, tp2.y, 5, 0, Math.PI*2);
+  tctx.fill();
 }
 
-function transform(p,m){
-  let dx=p.x-200, dy=p.y-200;
-  return {x:m.a*dx+m.b*dy+200, y:m.c*dx+m.d*dy+200};
+// Presets (defined in MATH coordinates)
+function setRotation() {
+  const t = Math.PI/6;
+  a.value = Math.cos(t);
+  b.value = -Math.sin(t);
+  c.value = Math.sin(t);
+  d.value = Math.cos(t);
+  draw();
+}
+function setShear() {
+  a.value = 1;  b.value = 1;
+  c.value = 0;  d.value = 1;
+  draw();
+}
+function setScale() {
+  a.value = 1.5; b.value = 0;
+  c.value = 0;   d.value = 1.5;
+  draw();
+}
+function setReflection() {
+  a.value = -1; b.value = 0;
+  c.value = 0;  d.value = 1;
+  draw();
+}
+function resetMatrix() {
+  a.value = 1; b.value = 0;
+  c.value = 0; d.value = 1;
+  draw();
 }
 
-function invert(m){
-  let det=m.a*m.d-m.b*m.c || 0.0001;
-  return {a:m.d/det, b:-m.b/det, c:-m.c/det, d:m.a/det};
-}
-
-function setRotation(){let t=Math.PI/6; a.value=Math.cos(t); b.value=-Math.sin(t); c.value=Math.sin(t); d.value=Math.cos(t); draw();}
-function setShear(){a.value=1;b.value=1;c.value=0;d.value=1;draw();}
-function setScale(){a.value=1.5;d.value=1.5;b.value=0;c.value=0;draw();}
-function setReflection(){a.value=-1;d.value=1;b.value=0;c.value=0;draw();}
-function resetMatrix(){a.value=1;b.value=0;c.value=0;d.value=1;draw();}
-
-document.querySelectorAll("input").forEach(el=>el.oninput=draw);
-origCanvas.onclick=e=>{trackPoint={x:e.offsetX,y:e.offsetY};draw();};
+document.querySelectorAll("input[type=range]").forEach(el => el.oninput = draw);
+origCanvas.onclick = e => {
+  trackPointCanvas = { x: e.offsetX, y: e.offsetY };
+  draw();
+};
 </script>
 
 </body>
